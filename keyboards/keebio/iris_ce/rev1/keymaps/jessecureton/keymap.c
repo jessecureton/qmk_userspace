@@ -71,11 +71,18 @@ typedef struct {
     uint16_t double_tap;
     uint16_t double_tap_hold;
     uint16_t currently_held;
+    bool has_double_tap;  // Flag to track if double_tap behavior is explicitly defined
 } tap_dance_advanced_t;
 
 void tap_dance_advanced_finished(tap_dance_state_t *state, void *user_data) {
     tap_dance_advanced_t *config = (tap_dance_advanced_t *)user_data;
     config->currently_held = 0;
+
+    // Handle interruption - immediately send tap key if interrupted
+    if (state->interrupted && state->count == 1) {
+        tap_code16(config->tap);
+        return;
+    }
 
     if (state->pressed) {
         if (state->count == 1
@@ -96,10 +103,12 @@ void tap_dance_advanced_finished(tap_dance_state_t *state, void *user_data) {
             if (config->double_tap_hold) {
                 register_code16(config->double_tap_hold);
                 config->currently_held = config->double_tap_hold;
-            } else if (config->double_tap) {
+            } else if (config->double_tap && config->has_double_tap) {
                 register_code16(config->double_tap);
                 config->currently_held = config->double_tap;
             } else {
+                // No specific double-tap behavior, send tap twice
+                tap_code16(config->tap);
                 register_code16(config->tap);
                 config->currently_held = config->tap;
             }
@@ -107,11 +116,15 @@ void tap_dance_advanced_finished(tap_dance_state_t *state, void *user_data) {
     } else {
         // Not pressed, just tapped
         if (state->count == 1) {
-            tap_code16(config->tap);  // Changed from register to tap_code
-        } else if (state->count == 2 && config->double_tap) {
-            tap_code16(config->double_tap);  // Changed from register to tap_code
-        } else {
-            tap_code16(config->tap);  // Changed from register to tap_code
+            tap_code16(config->tap);
+        } else if (state->count == 2) {
+            if (config->double_tap && config->has_double_tap) {
+                tap_code16(config->double_tap);
+            } else {
+                // No specific double-tap behavior, send tap twice
+                tap_code16(config->tap);
+                tap_code16(config->tap);
+            }
         }
     }
 }
@@ -132,7 +145,8 @@ void tap_dance_advanced_reset(tap_dance_state_t *state, void *user_data) {
           .hold = _hold, \
           .double_tap = 0, \
           .double_tap_hold = 0, \
-          .currently_held = 0 \
+          .currently_held = 0, \
+          .has_double_tap = false \
       }), }
 
 // Tap-hold with double tap behavior
@@ -143,7 +157,8 @@ void tap_dance_advanced_reset(tap_dance_state_t *state, void *user_data) {
           .hold = _hold, \
           .double_tap = _dt, \
           .double_tap_hold = 0, \
-          .currently_held = 0 \
+          .currently_held = 0, \
+          .has_double_tap = true \
       }), }
 
 // Full tap-hold-double-tap-hold behavior
@@ -154,7 +169,8 @@ void tap_dance_advanced_reset(tap_dance_state_t *state, void *user_data) {
           .hold = _hold, \
           .double_tap = _dt, \
           .double_tap_hold = _dt_hold, \
-          .currently_held = 0 \
+          .currently_held = 0, \
+          .has_double_tap = true \
       }), }
 
 tap_dance_action_t tap_dance_actions[] = {
